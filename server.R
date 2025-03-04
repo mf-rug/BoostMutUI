@@ -201,8 +201,8 @@ server <- function(session, input, output) {
       pivot_longer(., -1, names_to = 'metric', values_to = 'score') %>% 
       as.data.frame()
     mut_data$metric <- factor(mut_data$metric, levels = rev(colnames(df)))
-    mut_data$color <- 'black'
-    mut_data[mut_data$metric == 'mean', 'color'] <- 'white'
+    mut_data$color <- ifelse(dark, 'white', 'black')
+    mut_data[mut_data$metric == 'mean', 'color'] <- ifelse(dark, 'black', 'white')
     # browser()
     p1 <- ggplot(mut_data, aes(group = mutation)) +
       coord_flip() +
