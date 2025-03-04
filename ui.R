@@ -7,6 +7,8 @@ library(ggplot2)
 library(shinyWidgets)
 library(DT)
 library(shinyjs)
+library(mcr)
+library(htmltools)
 
 ui <- fluidPage(title = 'BoostMut', page_navbar(
   title = 'BoostMut',
@@ -14,15 +16,29 @@ ui <- fluidPage(title = 'BoostMut', page_navbar(
     useShinyjs(),
     tags$head(
       tags$style(HTML("
+        th {
+          text-align: center !important;
+          border-right: solid 5px transparent;
+          border-bottom: solid 1px;
+        }
         /* Target a specific column (e.g., third column, index starts from 1) */
         table.dataTable tbody tr.even td:nth-child(2) {
           box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0) !important;
         }
-            /* Default button styling */
+        .table.dataTable.dataTable tbody tr.active td {
+        color: inherit;
+        background-color: transparent;
+        box-shadow: #00aee3 0px 0px 8px 1px inset !important;
+        }
+       /* Default button styling */
       .btn-default {
           font-size: 11pt;
           padding-right: 11px;
           padding-left: 11px;
+      }
+    .dtfc-fixed-left {
+        background-color: var(--bs-table-bg) !important; /* Ensures it matches the main table */
+        color: inherit !important;
       }
       "))
   )),
@@ -38,7 +54,7 @@ ui <- fluidPage(title = 'BoostMut', page_navbar(
       br(),br(),
       radioGroupButtons('color_cols',
                         'Columns to highlight',
-                        choices = c('All', 'Only mean')),
+                        choices = c('All', 'Mean')),
       width = 2
   ), 
   mainPanel(
@@ -52,7 +68,8 @@ ui <- fluidPage(title = 'BoostMut', page_navbar(
                                    column(6, pickerInput('corr_1', 'Metric 1', width = 'fit', choices = NULL), align = 'right'),
                                    column(6, pickerInput('corr_2', 'Metric 2', width = 'fit', choices = NULL), align = 'left')
              ))),
-             plotOutput('corr_plot_or_not')),
+             div(style = "background-color: #1d1f21; padding: 0px; margin: 0px;",
+             plotOutput('corr_plot_or_not', height = '400px'))),
       column(7, uiOutput('metric_plot_or_not'))
     ),
     width = 10))
