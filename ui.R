@@ -68,8 +68,7 @@ ui <- fluidPage(title = 'BoostMut', page_navbar(
                                    column(6, pickerInput('corr_1', 'Metric 1', width = 'fit', choices = NULL), align = 'right'),
                                    column(6, pickerInput('corr_2', 'Metric 2', width = 'fit', choices = NULL), align = 'left')
              ))),
-             div(style = "background-color: #1d1f21; padding: 0px; margin: 0px;",
-             plotOutput('corr_plot_or_not', height = '400px'))),
+             plotOutput('corr_plot_or_not', height = '400px')),
       column(7, uiOutput('metric_plot_or_not'))
     ),
     width = 10))
