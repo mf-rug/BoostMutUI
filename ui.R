@@ -36,6 +36,9 @@ ui <- fluidPage(title = 'BoostMut', page_navbar(
           padding-right: 11px;
           padding-left: 11px;
       }
+          .dtfc-right-top-blocker {
+      background-color: inherit !important;
+    }
     .dtfc-fixed-left {
         background-color: var(--bs-table-bg) !important; /* Ensures it matches the main table */
         color: inherit !important;
