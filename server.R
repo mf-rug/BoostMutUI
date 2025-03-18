@@ -2,8 +2,11 @@ color_gradient <- function(dt, column_names, gradient_colors = c("#6666FF", "whi
   col_func <- colorRampPalette(gradient_colors)
   
   for (column_name in column_names) {
-    # Get min & max values of the column
-    col_values <- sort(unique(dt$x$data[[column_name]]), decreasing = FALSE)
+    # Remove NA values before sorting
+    col_values <- sort(unique(na.omit(dt$x$data[[column_name]])), decreasing = FALSE)
+    
+    # Handle case where column is all NA
+    if (length(col_values) == 0) next  # Skip formatting if all values are NA
     
     # Define breakpoints between min & max
     if (length(col_values) > 1) {
@@ -11,7 +14,7 @@ color_gradient <- function(dt, column_names, gradient_colors = c("#6666FF", "whi
     } else {
       breaks <- col_values  # If only one unique value, no breaks needed
     }
-    
+
     dt <- dt %>%
       formatStyle(
         column_name, 
@@ -24,6 +27,7 @@ color_gradient <- function(dt, column_names, gradient_colors = c("#6666FF", "whi
   
   return(dt)
 }
+
 
 
 server <- function(session, input, output) {
@@ -65,8 +69,9 @@ server <- function(session, input, output) {
   
   output$mutation_table <- renderDT({
     df <- df() %>% rownames_to_column(var = 'mutation')
+    
     if (input$color_cols == 'All') {
-      target_cols <- setdiff(colnames(df), 'mutation')
+      target_cols <- names(df)[sapply(df, is.numeric)]
     } else {
       target_cols <- 'mean'
     }
@@ -79,6 +84,11 @@ server <- function(session, input, output) {
     
     # Identify standalone columns (those that don’t end in _r or _s)
     standalone_cols <- setdiff(cols, c(paste0(feature_names, "_r"), paste0(feature_names, "_s")))
+    
+    # Reorder `df` to match the header structure
+    ordered_cols <- c(standalone_cols, as.vector(t(outer(feature_names, c("_r", "_s"), paste0))))
+    df <- df[, ordered_cols, drop = FALSE]  # Ensure correct column order
+    
     
     # Create top header row dynamically
     top_header <- c(
@@ -101,7 +111,6 @@ server <- function(session, input, output) {
       )
     ))
     
-    
     datatable(
       df, container = sketch,
       extensions = 'FixedColumns',
@@ -114,8 +123,8 @@ server <- function(session, input, output) {
                      info = FALSE,
                      scrollY = '35vh', 
                      fixedHeader = TRUE
-      )) %>% 
-      formatStyle(0, target = 'row', lineHeight='60%') %>% 
+      ))  %>%
+      formatStyle(0, target = 'row', lineHeight='60%') %>%
       color_gradient(target_cols, gradient_colors =  c(
         "#6666FF",
         ifelse(input$dark_mode == 'dark', "black", 'white'),
@@ -126,43 +135,59 @@ server <- function(session, input, output) {
   
   output$corr_plot_or_not <- renderPlot({
     req(df(), input$corr_1)
-    
     df <- df()
-
-    dark <- input$dark_mode == 'dark'
-    plot_col <- ifelse(dark, 'white', 'black')
-    
-    # Perform Deming regression
-    deming_model <- mcreg(df[,input$corr_1], df[,input$corr_2], method.reg = "Deming")
-    
-    # Extract coefficients
-    slope <- coef(deming_model)[2]
-    intercept <- coef(deming_model)[1]
-
-    p1 <- ggplot(df, aes(x = .data[[input$corr_1]], y=.data[[input$corr_2]])) + 
-      geom_point(color = plot_col) +
-      geom_abline(color = plot_col) +
-      geom_abline(slope = slope, intercept = intercept, color = "blue") +
-      # geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = FALSE)  +
-    
-      scale_x_continuous(limits = c(min(df[, c(input$corr_1, input$corr_2)]), 
-                                    max(df[, c(input$corr_1, input$corr_2)]))) +
-      scale_y_continuous(limits = c(min(df[, c(input$corr_1, input$corr_2)]), 
-                                    max(df[, c(input$corr_1, input$corr_2)]))) +
-      theme_bw() +
-      theme(text = element_text(size=18))
-    if (dark) {
-      p1 <- p1 + theme(text = element_text(color = 'white'),
-                       axis.text = element_text(color = 'white'),
-                       panel.background = element_rect(fill = 'black'),
-                       plot.background = element_rect(fill = '#1d1f21', size = 0),
-                       legend.background = element_rect(fill='#1d1f21'),
-                       legend.box.background = element_rect(color='#1d1f21'),
-                       panel.grid.major = element_line(color='#94949480'),
-                       panel.grid.minor = element_line(color='#94949480'),
-                       theme(plot.margin=unit(c(-0.30,0,0,0), "null")))
-    }
-    p1
+      dark <- input$dark_mode == 'dark'
+      plot_col <- ifelse(dark, 'white', 'black')
+      
+      # Perform Deming regression
+      safe_deming <- function(x, y, error.ratio = 1) {
+        tryCatch({
+          model <- mcreg(x, y, method.reg = "Deming", error.ratio = error.ratio)
+          
+          # Extract coefficients
+          slope <- coef(model)[2]
+          intercept <- coef(model)[1]
+          
+          return(list(slope = slope, intercept = intercept, method = "Deming"))
+        }, error = function(e) {
+          # Fallback to OLS regression if Deming fails
+          lm_model <- lm(y ~ x)
+          return(list(slope = coef(lm_model)[2], intercept = coef(lm_model)[1], method = "OLS (fallback)"))
+        })
+      }
+      
+      
+      # deming_model <- mcreg(df[,input$corr_1], df[,input$corr_2], method.reg = "Deming")
+      deming_model <- safe_deming(df[,input$corr_1], df[,input$corr_2])
+      
+      # Extract coefficients
+      slope <- coef(deming_model)[2]
+      intercept <- coef(deming_model)[1]
+  
+      p1 <- ggplot(df, aes(x = .data[[input$corr_1]], y=.data[[input$corr_2]])) + 
+        geom_point(color = plot_col) +
+        geom_abline(color = plot_col) +
+        geom_abline(slope = slope, intercept = intercept, color = "blue") +
+        # geom_smooth(method = "lm", formula = y ~ x, color = "blue", se = FALSE)  +
+      
+        scale_x_continuous(limits = c(min(df[, c(input$corr_1, input$corr_2)]), 
+                                      max(df[, c(input$corr_1, input$corr_2)]))) +
+        scale_y_continuous(limits = c(min(df[, c(input$corr_1, input$corr_2)]), 
+                                      max(df[, c(input$corr_1, input$corr_2)]))) +
+        theme_bw() +
+        theme(text = element_text(size=18))
+      if (dark) {
+        p1 <- p1 + theme(text = element_text(color = 'white'),
+                         axis.text = element_text(color = 'white'),
+                         panel.background = element_rect(fill = 'black'),
+                         plot.background = element_rect(fill = '#1d1f21', size = 0),
+                         legend.background = element_rect(fill='#1d1f21'),
+                         legend.box.background = element_rect(color='#1d1f21'),
+                         panel.grid.major = element_line(color='#94949480'),
+                         panel.grid.minor = element_line(color='#94949480'),
+                         theme(plot.margin=unit(c(-0.30,0,0,0), "null")))
+      }
+      p1
   })
 
   observe({
